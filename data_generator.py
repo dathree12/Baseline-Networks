@@ -14,12 +14,12 @@ def resize_3d_image(image, shape):
     return normalised_image
 
 def train_generator(f_path, batch_size, moving_image_shape, fixed_image_shape, with_label_inputs=True):
-    moving_images_path = os.path.join(f_path, 'us_images')
-    fixed_images_path = os.path.join(f_path, 'mr_images')
+    moving_images_path = os.path.join(f_path, 'mr_images')
+    fixed_images_path = os.path.join(f_path, 'us_images')
     
     if with_label_inputs:
-        moving_labels_path = os.path.join(f_path, 'us_labels')
-        fixed_labels_path = os.path.join(f_path, 'mr_labels')
+        moving_labels_path = os.path.join(f_path, 'mr_labels')
+        fixed_labels_path = os.path.join(f_path, 'us_labels')
     
     all_names = np.array(os.listdir(fixed_images_path))
     
@@ -63,12 +63,12 @@ def train_generator(f_path, batch_size, moving_image_shape, fixed_image_shape, w
         yield (inputs, outputs)
 
 def test_generator(f_path, batch_size, moving_image_shape, fixed_image_shape, start_index, end_index, label_num, with_label_inputs=True):
-    moving_images_path = os.path.join(f_path, 'us_images')
-    fixed_images_path = os.path.join(f_path, 'mr_images')
+    moving_images_path = os.path.join(f_path, 'mr_images')
+    fixed_images_path = os.path.join(f_path, 'us_images')
     
     if with_label_inputs:
-        moving_labels_path = os.path.join(f_path, 'us_labels')
-        fixed_labels_path = os.path.join(f_path, 'mr_labels')
+        moving_labels_path = os.path.join(f_path, 'mr_labels')
+        fixed_labels_path = os.path.join(f_path, 'us_labels')
     
     all_names = np.array(os.listdir(fixed_images_path))[start_index: end_index]
     

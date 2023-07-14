@@ -1,6 +1,7 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES']='0'
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ['CUDA_VISIBLE_DEVICES']='7'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import voxelmorph as vxm
@@ -67,9 +68,9 @@ registration_model.compile(optimizer='Adam', loss=losses, loss_weights=loss_weig
 # Training loop
 # =============================================================================
 
-f_path = r'nifti_data/train'
+f_path = r'/workspace/reg_challenge/dataset/train'
 
-val_path = r'nifti_data/val'
+val_path = r'/workspace/reg_challenge/dataset/val'
 
 model_save_path = r'localnet_model_checkpoints'
 if not os.path.exists(model_save_path):

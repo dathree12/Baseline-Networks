@@ -1,9 +1,7 @@
 import os
 import nibabel as nib
 
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ['CUDA_VISIBLE_DEVICES']='0'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 
 import numpy as np
 from metrics import DSC, RDSC, centroid_maes, TRE, RTRE, RTs, HD95, StDJD 
@@ -15,7 +13,30 @@ from tensorflow import keras
 
 import tensorflow as tf
 
-val_path = r'/workspace/reg_challenge/dataset/val'
+import keras.backend as K
+
+def focal_loss(y_true, y_pred):
+    #flatten label and prediction tensors
+    y_true_pos = K.flatten(y_true)
+    y_pred_pos = K.flatten(y_pred)
+    
+    BCE = K.binary_crossentropy(y_true_pos, y_pred_pos)
+    BCE_EXP = K.exp(-BCE)
+    
+    alpha = 0.7
+    gamma = 2
+    focal_loss = K.mean(alpha * K.pow((1 - BCE_EXP), gamma) * BCE)
+    return focal_loss
+
+def nibabel_save(arr, file_name):
+    affine = np.eye(4)
+    nifti_file = nib.Nifti1Image(arr, affine)
+    
+    f_path = f'../git_challenge/label-reg/data/Result/Focal/{file_name}'
+    nib.save(nifti_file, f_path)
+
+# val_path = r'nifti_data/val'
+val_path = r'../git_challenge/label-reg/data/test/'
 
 batch_size = 1
 
@@ -25,36 +46,32 @@ batch_size = 1
 moving_image_shape = (64, 64, 64, 1)
 fixed_image_shape = (64, 64, 64, 1)
 
-model_save_path  =r'/workspace/reg_challenge/Baseline-Networks/voxelmorph_model_checkpoints/registration_model_trial_64'
+model_save_path  =r'../git_challenge/label-reg/data/Result/Focal/registration_model_trial_192'
 lambda_param = 0.05
 
 spatial_transformer = vxm.layers.SpatialTransformer(name='transformer')
 
-registration_model = keras.models.load_model(model_save_path, custom_objects={'loss': [vxm.losses.MSE().loss, vxm.losses.Dice().loss, vxm.losses.Grad('l2').loss], 'loss_weights': [0.5, 1, lambda_param]})
+registration_model = keras.models.load_model(model_save_path, custom_objects={'focal_loss': focal_loss})
 
 def evaulation_function(moving_image, fixed_image, moving_label):
     temp_moving_label = np.zeros(np.shape(moving_image))
     temp_fixed_label = np.zeros(np.shape(fixed_image))
-    _, ddf = registration_model.predict((moving_image, fixed_image), verbose=0) #, temp_moving_label, temp_fixed_label), verbose=0)
+    _, _, ddf = registration_model.predict((moving_image, fixed_image, temp_moving_label, temp_fixed_label), verbose=0)
     moved_label = spatial_transformer([moving_label, ddf])
     return moved_label, ddf
-    
-def nibabel_save(arr, file_name):
-    affine = np.eye(4)
-    nifti_file = nib.Nifti1Image(arr, affine)
-    
-    f_path = f'/workspace/reg_challenge/Baseline-Networks/voxelmorph_model_result/{file_name}'
-    nib.save(nifti_file, f_path)
-    
+
+
 all_labels_fixed_labels = []
 all_labels_moved_labels = []
 all_labels_moving_labels = []
 all_labels_ddfs = []
 
-for label_num in range(1):
+iter_ = 1
+
+for label_num in range(iter_):
     val_gen = test_generator(val_path, batch_size, moving_image_shape, fixed_image_shape, start_index=None, end_index=None, label_num=label_num, with_label_inputs=True)
     all_fixed_labels = []
-    all_moved_labels = [] 
+    all_moved_labels = []
     all_moving_labels = []
     all_ddfs = []
     
@@ -65,14 +82,8 @@ for label_num in range(1):
             moving_image, fixed_image, moving_label, fixed_label = val_inputs
             fixed_image, fixed_label, zero_phi = val_outputs
             moved_label, ddf = evaulation_function(moving_image, fixed_image, moving_label)
-            # print(np.amax(fixed_label), np.amax(moving_label))
+            # print(type(moved_label.numpy()))
             
-            all_fixed_labels.append(fixed_label)
-            all_moved_labels.append(moved_label)
-            all_moving_labels.append(moving_label)
-            all_ddfs.append(ddf)
-            # print(i)
-            # i += 1
             fn_ = f'moving_image_{i}.nii'
             nibabel_save(moving_image, fn_)
             
@@ -84,7 +95,20 @@ for label_num in range(1):
             
             fn_ = f'fixed_label_{i}.nii'
             nibabel_save(fixed_label, fn_)
-                        
+                
+            # fn_ = f'wraped_image_{i}.nii'
+            # nibabel_save(moved_label, fn_)
+            
+            # print(len(val_inputs), len(val_outputs))
+            # print(val_inputs[-1].shape, val_outputs[-1].shape)
+            
+            all_fixed_labels.append(fixed_label)
+            all_moved_labels.append(moved_label)
+            all_moving_labels.append(moving_label)
+            all_ddfs.append(ddf)
+            # print(i)
+            i += 1
+            
         except (IndexError, StopIteration) as e:
             all_labels_fixed_labels.append(np.concatenate(all_fixed_labels, axis=0))
             all_labels_moved_labels.append(np.concatenate(all_moved_labels, axis=0))
@@ -102,7 +126,7 @@ all_lim_hd95s = []
 all_lim_maes = []
 
 # compute metrics
-for label in range(1):
+for label in range(iter_):
     dsc = DSC(tf.convert_to_tensor(all_labels_fixed_labels[label], dtype=tf.double), tf.convert_to_tensor(all_labels_moved_labels[label], dtype=tf.double))
     rdsc = RDSC(tf.convert_to_tensor(all_labels_fixed_labels[label], dtype=tf.double), tf.convert_to_tensor(all_labels_moved_labels[label], dtype=tf.double))
     mae = centroid_maes(tf.convert_to_tensor(all_labels_fixed_labels[label], dtype=tf.double), tf.convert_to_tensor(all_labels_moved_labels[label], dtype=tf.double))
@@ -118,7 +142,7 @@ for label in range(1):
     
     all_lim_hd95s.append(lim_hd95)
     all_lim_maes.append(lim_mae)
-    
+
 
 fin_DSC = np.mean(all_dscs)
 fin_RDSC = np.mean(all_rdscs)
@@ -188,20 +212,20 @@ print(f'\nFinal Score: {score}')
 
 # class Evaluation():
 #     def __init__(self):
-        
+
 #         val_path = r'/home/s-sd/Desktop/mu_reg_miccai_challenge/nifti_data/holdout'
-        
+
 #         batch_size = 1
-        
+
 #         # moving_image_shape = (81, 118, 88, 1)
 #         # fixed_image_shape = (120, 128, 128, 1)
-        
+
 #         moving_image_shape = (64, 64, 64, 1)
 #         fixed_image_shape = (64, 64, 64, 1)
-        
+
 #         model_save_path  =r'/home/s-sd/Desktop/mu_reg_miccai_challenge/ckpts_docker/localnet_model_checkpoints/registration_model_trial_288'
 #         lambda_param = 0.05
-        
+
 #         spatial_transformer = vxm.layers.SpatialTransformer(name='transformer')
-        
+
 #         registration_model = keras.models.load_model(model_save_path, custom_objects={'loss': [vxm.losses.MSE().loss, vxm.losses.Dice().loss, vxm.losses.Grad('l2').loss], 'loss_weights': [0.5, 1, lambda_param]})

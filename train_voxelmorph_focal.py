@@ -1,21 +1,30 @@
 import os
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ['CUDA_VISIBLE_DEVICES']='0'
+os.environ['CUDA_VISIBLE_DEVICES']='2'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 import voxelmorph as vxm
-
 import numpy as np
 import tensorflow as tf
-
 from tensorflow import keras
-
 from model import get_model
-
 from data_generator import train_generator, test_generator
-
 import matplotlib.pyplot as plt
+import keras.backend as K
+
+def focal_loss(y_true, y_pred):
+    #flatten label and prediction tensors
+    y_true_pos = K.flatten(y_true)
+    y_pred_pos = K.flatten(y_pred)
+    
+    BCE = K.binary_crossentropy(y_true_pos, y_pred_pos)
+    BCE_EXP = K.exp(-BCE)
+    
+    alpha = 0.7
+    gamma = 2
+    focal_loss = K.mean(alpha * K.pow((1 - BCE_EXP), gamma) * BCE)
+    return focal_loss
 
 # =============================================================================
 # Build the backbone model
@@ -56,7 +65,7 @@ print('\nRegistration network inputs and outputs:')
 print('    input shape: ', ', '.join([str(t.shape) for t in registration_model.inputs]))
 print('    output shape:', ', '.join([str(t.shape) for t in registration_model.outputs]))
 
-losses = [vxm.losses.MSE().loss, vxm.losses.Grad('l2').loss]
+losses = [focal_loss, vxm.losses.Grad('l2').loss]
 lambda_param = 0.05
 loss_weights = [1, lambda_param]
 
@@ -66,11 +75,11 @@ registration_model.compile(optimizer='Adam', loss=losses, loss_weights=loss_weig
 # Training loop
 # =============================================================================
 
-f_path = r'/workspace/reg_challenge/dataset/train_norm'
+f_path = r'/workspace/reg_challenge/dataset/train'
 
 val_path = r'/workspace/reg_challenge/dataset/val'
 
-model_save_path = r'voxelmorph_model_checkpoints_imgnorm_img96'
+model_save_path = r'/workspace/reg_challenge/Baseline-Networks/voxelmorph_model_checkpoints_focal_size96'
 if not os.path.exists(model_save_path):
     os.mkdir(model_save_path)
 
@@ -110,7 +119,7 @@ for trial in range(0, num_trials):
     plt.plot(val_dice, 'r')
     plt.xlabel('Trials')
     plt.ylabel('Dice')
-    plt.savefig(r'voxelmorph_imgnorm96_val_dice_1.png')
+    plt.savefig(r'voxelmorph_focalloss_size96_val_dice_2.png')
     print('    Validation Dice: ', np.mean(dice_scores))
     if trial % 4 == 0:
         registration_model.save(os.path.join(model_save_path, f'registration_model_trial_{trial}'))
